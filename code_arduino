@@ -1,0 +1,152 @@
+#include<TimerOne.h>
+
+#define TRIG_PIN 9
+#define ECHO_PIN 8
+#define TIMER_OUT 5000
+#define en 6
+#define in1 5
+#define in2 4
+
+int kiemtra=0;
+String KpStr;
+String KiStr;
+String KdStr;
+String setPointStr;
+String S;
+double setPoint; //Setpoint
+double h;
+double x;
+
+double E, E1, E2, alpha, gamma, beta;
+double Kp, Ki, Kd;
+double T;
+
+volatile double Output;
+double LastOutput;
+
+// Ham doc cam bien => khoang cach
+float getDistance()
+{
+  double duration, distance;
+  digitalWrite(TRIG_PIN,0);
+  delayMicroseconds(2);
+  digitalWrite(TRIG_PIN,1);   
+  delayMicroseconds(5);
+  digitalWrite(TRIG_PIN,0);
+
+  duration = pulseIn(ECHO_PIN,HIGH,TIMER_OUT);  
+  distance = duration/2/29.412;
+
+  return distance;
+}
+
+// Ham dieu khien PID
+void PID()
+{ 
+  if(kiemtra==1)
+  {
+    x = getDistance();
+    h = 19-x;
+    E = setPoint - h;
+  
+    alpha = 2*T*Kp + Ki*T*T + 2*Kd;
+    beta = T*T*Ki - 4*Kd - 2*T*Kp;
+    gamma = 2*Kd;
+    Output = (alpha*E + beta*E1 + gamma*E2 + 2*T*LastOutput)/(2*T);
+    LastOutput = Output;
+    E2=E1;
+    E1=E;
+    if(Output > 255) Output = 255;
+    if(Output < 0) Output = 0;
+    
+    digitalWrite(in1,HIGH);
+    digitalWrite(in2,LOW);
+    
+    if(h<=setPoint) analogWrite(en,Output);
+    else if(h>setPoint) analogWrite(en,0);
+  
+    S = "";
+    S = (String)(h) + ',' + (String)(E) + ',' + (String)(Output) + ',' + (String)(setPoint);
+    Serial.println(S);
+  }
+  else if(kiemtra==2)
+  {
+    x = getDistance();
+    h = 19.2-x;
+    E = setPoint - h;
+    S = "";
+    S = (String)(h) + ',' + (String)(E) + ',' + (String)(Output) + ',' + (String)(setPoint);
+    Serial.println(S);
+  }
+  else;
+}
+
+void setup()
+{
+  Serial.begin(9600);
+  pinMode(TRIG_PIN,OUTPUT);
+  pinMode(ECHO_PIN,INPUT);
+ 
+  pinMode(en,OUTPUT); 
+  pinMode(in1,OUTPUT);
+  pinMode(in2,OUTPUT);
+
+  T=0.1;
+  Timer1.initialize(100000);  //don vi us
+  Timer1.attachInterrupt(PID);
+
+}
+
+String dataReceive="";
+void loop(){
+  if (Serial.available()>0)
+  {
+    Output=0;
+    LastOutput=0;
+    E=0;
+    E1=0;
+    E2=0;
+    //Nhan du lieu gui tu may tinh
+    dataReceive = Serial.readStringUntil('\n');
+    
+    if(dataReceive != "" && dataReceive != "stop")
+    {
+      // tach du lieu, lay thong so PID va setpoint
+      KpStr = getValue(dataReceive, ',', 0);
+      KiStr = getValue(dataReceive, ',', 1);
+      KdStr = getValue(dataReceive, ',', 2);
+      setPointStr = getValue(dataReceive, ',', 3);
+      
+      Kp = KpStr.toDouble();
+      Ki = KiStr.toDouble();
+      Kd = KdStr.toDouble();
+      setPoint = setPointStr.toDouble();
+
+      kiemtra=1;
+      dataReceive="";
+    }
+    if(dataReceive == "stop")
+    {
+      kiemtra=2;
+      dataReceive="";
+    }
+  }
+}
+
+String getValue(String data, char separator, int index) 
+{
+  int found = 0;
+  int strIndex[] = { 0, -1 };
+  int maxIndex = data.length() - 1;
+  
+  for (int i = 0; i <= maxIndex && found <= index; i++) 
+  {
+    if (data.charAt(i) == separator || i == maxIndex) 
+    {
+      found++;
+      strIndex[0] = strIndex[1] + 1;
+      strIndex[1] = (i == maxIndex) ? i + 1 : i;
+    }
+  }
+  return found > index ? data.substring(strIndex[0], strIndex[1]) : "";
+}
